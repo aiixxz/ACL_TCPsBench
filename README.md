@@ -72,6 +72,15 @@ TCPsBench/
 ├── Eval/
 │   ├── scripts/
 └── README.md
+└── Supplementary Material.md
+ ```
+
+---
+### Figure 1 (Revised Visualization)
+
+To address readability issues caused by overlapping curves in the original radar chart, the visualization has been restructured into seven separate radar plots. Each plot groups models within the same series, allowing clearer intra-series comparison and reducing cross-model visual interference.
+
+![images](fig/fig1.png)
 
 
 
