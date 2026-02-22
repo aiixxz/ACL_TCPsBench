@@ -83,9 +83,7 @@ To address readability issues caused by overlapping curves in the original radar
 ![images](fig/fig1.png)
 
 
-## Qualitative error table
-
-## Qualitative Error Analysis of MLLMs in Chinese Art Understanding
+## Qualitative Error Table
 
 ### Case 1: *Silk Reeling Scene*
 
