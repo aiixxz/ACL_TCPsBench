@@ -1,0 +1,11 @@
+﻿,Claude-4.5-Sonnet,GLM-4V-9B,Qwen3-4B,Qwen3-8B,Qwen3-VL-Plus,deepseek-vl2,gemini-2.5-pro,gemini-3-pro,gpt-4o,gpt-5
+Claude-4.5-Sonnet,1.0,,,,,,,,,
+GLM-4V-9B,,1.0,,,,,,,,
+Qwen3-4B,,,1.0,,,,,,,
+Qwen3-8B,,,,1.0,,,,,,
+Qwen3-VL-Plus,,,,,1.0,,,,,
+deepseek-vl2,,,,,,1.0,,,,
+gemini-2.5-pro,,,,,,,1.0,,,
+gemini-3-pro,,,,,,,,1.0,,
+gpt-4o,,,,,,,,,1.0,
+gpt-5,,,,,,,,,,1.0
