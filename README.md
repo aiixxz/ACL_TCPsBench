@@ -89,7 +89,7 @@ To address readability issues caused by overlapping curves in the original radar
 
 ### Case 1: *Silk Reeling Scene*
 
-![images](fig/Silk Reeling Scene.jpg)
+![images](fig/case1.jpg)
 - **Task & Type**: Task 1 - Basic Attribute / Single-Choice 
 * **Question**: Which dynasty does this painting belong to? A. Qing Dynasty; B. Song Dynasty; C. Wei-Jin and Northern-Southern Dynasties- D. Tang Dynasty 
 - **Ground Truth**: B 
@@ -101,7 +101,7 @@ To address readability issues caused by overlapping curves in the original radar
 
 ### Case 2: *Daozi's Ink Treasures: Fifty Frames of Figure Line Drawings*
 
-![images](fig/Daozi's Ink Treasures: Fifty Frames of Figure Line Drawings.jpg)
+![images](fig/case2.jpg)
 - **Task & Type**: Task 2 - Object Recognition / Multi-Choice 
 * **Question**: Based on the image and annotation data, which character identities appear in the painting? A. Princes and generals, B. Attendants, C. Gods and officials, D. Female officials 
 - **Ground Truth**: ABC 
@@ -113,7 +113,7 @@ To address readability issues caused by overlapping curves in the original radar
 
 ### Case 3: *Daoist Retreat in Mountain and Stream*
 
-![images](fig/Daoist Retreat in Mountain and Stream.jpg)
+![images](fig/case3.jpg)
 - **Task & Type**: Task 2 - Object Recognition (Localization) / Yes-No 
 - **Question**: Is the object in the coordinate area [875, 595, 982, 708] a "dwelling"? 
 - **Ground Truth**: Yes 
@@ -125,7 +125,7 @@ To address readability issues caused by overlapping curves in the original radar
 
 ### Case 4: *Album of Daoist and Buddhist Themes - Procession of Daoist Deities (Leaf 26)*
 
-![images](fig/Album of Daoist and Buddhist Themes - Procession of Daoist Deities (Leaf 26).jpg)
+![images](fig/case4.jpg)
 - **Task & Type**: Task 3 - Narrative Composition Recognition / Fill 
 - **Question**: This painting is of the ______ composition. 
 - **Ground Truth**: Narrative Composition 
@@ -137,7 +137,7 @@ To address readability issues caused by overlapping curves in the original radar
 
 ### Case 5: *Sui Gu Xian Chou Tu*
 
-![images](fig/Sui Gu Xian Chou Tu.jpg)
+![images](fig/case5.jpg)
 - **Task & Type**: Task 4 - Technique Recognition / Single-Choice 
 * **Question**: Which painting technique is primarily used in this artwork? A. Axe-cut texture strokes; B. Hemp-fiber texture strokes; C. Raveled-rope texture strokes- D. Mi-dot texture strokes 
 - **Ground Truth**: A 
@@ -149,7 +149,7 @@ To address readability issues caused by overlapping curves in the original radar
 
 ### Case 6: *Water and Lotus under the Tree*
 
-![images](fig/Water and Lotus under the Tree.jpg)
+![images](fig/case6.jpg)
 - **Task & Type**: Task 5 - Artistic Conception / Yes-No 
 - **Question**: The painting creates an elegant and harmonious palace atmosphere through composition, brushwork, and texture. 
 - **Ground Truth**: Yes 
@@ -161,7 +161,7 @@ To address readability issues caused by overlapping curves in the original radar
 
 ### Case 7: *Illustration of an Imperial Poem*
 
-![images](fig/Illustration of an Imperial Poem.jpg)
+![images](fig/case7.jpg)
 - **Task & Type**: Task 6 - Cultural Symbolism / Single-Choice 
 * **Question**: Through imagery and inscription juxtaposition, what traditional cultural meaning does the work primarily convey? A. Sentiment of farewell journey, B. Study of natural vitality, C. Ritual metaphor of deity worship, D. Prayer for harvest and family prosperity
 - **Ground Truth**: C 
