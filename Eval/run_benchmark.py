@@ -20,10 +20,14 @@ import aiohttp
 from openai import AsyncOpenAI
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
 PAPER_SCRIPTS = PROJECT_ROOT / "paper" / "scripts"
-if str(PAPER_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(PAPER_SCRIPTS))
+# Prefer evaluator files placed beside run_benchmark.py, while retaining the
+# paper/scripts path for the standalone evaluator's transitive imports.
+for module_dir in (PAPER_SCRIPTS, SCRIPT_DIR):
+    if str(module_dir) not in sys.path:
+        sys.path.insert(0, str(module_dir))
 
 # Reuse the exact seven-dimensional rubric, evidence schema, parser, and hashes
 # used by the standalone open-ended evaluator.
