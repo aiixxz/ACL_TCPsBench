@@ -1067,6 +1067,53 @@ def extract_text_from_content(content: Any) -> str:
         return ""
 
 
+class FatalAPIError(RuntimeError):
+    """Non-recoverable API failure that must stop the current benchmark run."""
+
+
+class InvalidTokenError(FatalAPIError):
+    """Fatal authentication failure that must stop the current benchmark run."""
+
+
+class InsufficientCreditsError(FatalAPIError):
+    """Fatal account-credit failure that must stop the current benchmark run."""
+
+
+def is_invalid_token_401(error: Any) -> bool:
+    message = str(error or "").lower()
+    return "401" in message and "invalid token" in message
+
+
+def is_insufficient_credits_402(error: Any) -> bool:
+    message = str(error or "").lower()
+    return "402" in message and (
+        "insufficient credits" in message or "openrouter_credits" in message
+    )
+
+
+def fatal_api_exception(error: Any) -> Optional[FatalAPIError]:
+    message = str(error or "")
+    if is_invalid_token_401(message):
+        return InvalidTokenError(
+            "HTTP 401 Invalid token. Benchmark stopped; verify the API base and token before resuming. "
+            + message[:500]
+        )
+    if is_insufficient_credits_402(message):
+        return InsufficientCreditsError(
+            "HTTP 402 Insufficient credits. Benchmark stopped; add credits or switch API credentials before resuming. "
+            + message[:500]
+        )
+    return None
+
+
+def raise_for_fatal_api_record(record: Dict[str, Any]) -> None:
+    """Second-line circuit breaker for errors already wrapped into result rows."""
+    for field in ("error", "evaluator_error"):
+        fatal = fatal_api_exception(record.get(field))
+        if fatal is not None:
+            raise fatal
+
+
 class AsyncVisionClient:
     def __init__(
         self,
@@ -1085,6 +1132,17 @@ class AsyncVisionClient:
         self.allow_text_fallback = allow_text_fallback
         self.anthropic_version = "2023-06-01"
         self.openai_client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout)
+        self.fatal_error_event = asyncio.Event()
+        self.fatal_error: Optional[FatalAPIError] = None
+
+    def _raise_if_fatal_api_error(self, error: Any = None) -> None:
+        if error is not None:
+            fatal = fatal_api_exception(error)
+            if fatal is not None:
+                self.fatal_error = fatal
+                self.fatal_error_event.set()
+        if self.fatal_error_event.is_set() and self.fatal_error is not None:
+            raise self.fatal_error
 
     async def _openai_chat_completion(
         self,
@@ -1205,6 +1263,7 @@ class AsyncVisionClient:
         )
 
         for attempt in range(self.max_retries):
+            self._raise_if_fatal_api_error()
             try:
                 # ★ 核心修复：直接传原始 messages（含 image_url），不再 stringify
                 req_started = time.perf_counter()
@@ -1231,6 +1290,7 @@ class AsyncVisionClient:
                     log(f"[warn] openai-style request timeout: model={model}, max_tokens={max_tokens}, attempt={attempt}")
 
             except Exception as e:
+                self._raise_if_fatal_api_error(e)
                 last_error = str(e)
                 lowered = last_error.lower()
 
@@ -1259,6 +1319,7 @@ class AsyncVisionClient:
                     except asyncio.TimeoutError:
                         last_error = f"fallback request timeout after {self.timeout + 5}s"
                     except Exception as fallback_exc:
+                        self._raise_if_fatal_api_error(fallback_exc)
                         last_error = f"{last_error}; fallback: {fallback_exc}"
 
             sleep_s = self.backoff_base * (2 ** attempt) + random.random()
@@ -1367,6 +1428,7 @@ class AsyncVisionClient:
 
         last_error = ""
         for attempt in range(self.max_retries):
+            self._raise_if_fatal_api_error()
             try:
                 timeout = aiohttp.ClientTimeout(total=self.timeout)
                 async with session.post(url, headers=headers, json=payload, timeout=timeout) as resp:
@@ -1408,7 +1470,9 @@ class AsyncVisionClient:
                     if resp.status in {408, 409, 425, 429, 500, 502, 503, 504}:
                         last_error = f"HTTP {resp.status}: {text[:500]}"
                     else:
-                        raise RuntimeError(f"HTTP {resp.status}: {text[:1000]}")
+                        error = RuntimeError(f"HTTP {resp.status}: {text[:1000]}")
+                        self._raise_if_fatal_api_error(error)
+                        raise error
             except asyncio.TimeoutError:
                 last_error = "request timeout"
             except aiohttp.ClientError as e:
@@ -1428,6 +1492,7 @@ class AsyncVisionClient:
         temperature: float = 0.0,
         max_tokens: int = 512,
     ) -> Tuple[str, str]:
+        self._raise_if_fatal_api_error()
         style = api_style.strip().lower()
         if style == "openai":
             res = await self._openai_chat_completion(
@@ -1636,6 +1701,8 @@ async def evaluate_one_sample(
                     "generation_retry_count": retry_count,
                     "response_time_seconds": round(time.perf_counter() - started, 3),
                 })
+            except FatalAPIError:
+                raise
             except Exception as exc:
                 row.update({
                     "raw_model_output": "",
@@ -1996,10 +2063,19 @@ async def evaluate_model(
                         results.append(sub)
                         if on_result is not None:
                             on_result(sub, finished + 1, total)
+                        raise_for_fatal_api_record(sub)
                 else:
                     results.append(row)
                     if on_result is not None:
                         on_result(row, finished + 1, total)
+                    raise_for_fatal_api_record(row)
+            except FatalAPIError as exc:
+                log(f"[{model_config.name}] FATAL: {exc}")
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
             except Exception as e:
                 log(f"[{model_config.name}] 样本处理异常: {type(e).__name__}: {str(e)[:500]}")
                 raise
@@ -2171,6 +2247,8 @@ async def score_report_rows(
                     "evaluator_finish_reason": reason,
                     "evaluator_generation_max_tokens": max_tokens,
                 }
+            except FatalAPIError:
+                raise
             except Exception as exc:
                 return index, {
                     "evaluator_status": "error",
@@ -2181,13 +2259,22 @@ async def score_report_rows(
 
         jobs = [asyncio.create_task(worker(index)) for index in open_indices]
         completed = 0
-        for future in asyncio.as_completed(jobs):
-            index, update = await future
-            if update:
-                rows[index].update(update)
-            completed += 1
-            if completed % 10 == 0 or completed == len(jobs):
-                log(f"[{tested_model}] seven-dimensional scoring {completed}/{len(jobs)}")
+        try:
+            for future in asyncio.as_completed(jobs):
+                index, update = await future
+                if update:
+                    rows[index].update(update)
+                    raise_for_fatal_api_record(update)
+                completed += 1
+                if completed % 10 == 0 or completed == len(jobs):
+                    log(f"[{tested_model}] seven-dimensional scoring {completed}/{len(jobs)}")
+        except FatalAPIError as exc:
+            log(f"[{tested_model}] FATAL: {exc}")
+            for job in jobs:
+                if not job.done():
+                    job.cancel()
+            await asyncio.gather(*jobs, return_exceptions=True)
+            raise
 
     return rows
 
@@ -2393,6 +2480,7 @@ def _legacy_sample_has_valid_image(sample: Sample) -> bool:
 
 async def async_main(args: Optional[argparse.Namespace] = None) -> None:
     args = args or parse_args()
+    log("Fatal API circuit breakers enabled: 401 invalid token; 402 insufficient credits")
     data_dir = Path(args.data_dir)
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -2459,16 +2547,21 @@ async def async_main(args: Optional[argparse.Namespace] = None) -> None:
                     save_json_atomic(report_path, ordered)
 
             if pending:
-                generated = await evaluate_model(
-                    model_config=model_cfg,
-                    samples=pending,
-                    client=client,
-                    concurrency=args.concurrency,
-                    objective_max_tokens=args.objective_max_tokens,
-                    short_answer_max_tokens=args.short_answer_max_tokens,
-                    short_answer_variants=args.short_answer_variants,
-                    on_result=write_progress,
-                )
+                try:
+                    generated = await evaluate_model(
+                        model_config=model_cfg,
+                        samples=pending,
+                        client=client,
+                        concurrency=args.concurrency,
+                        objective_max_tokens=args.objective_max_tokens,
+                        short_answer_max_tokens=args.short_answer_max_tokens,
+                        short_answer_variants=args.short_answer_variants,
+                        on_result=write_progress,
+                    )
+                except FatalAPIError:
+                    ordered = [rows_by_id[key] for key in sorted(rows_by_id)]
+                    save_json_atomic(report_path, ordered)
+                    raise
                 for row in build_simple_report_rows(generated):
                     rows_by_id[str(row["id"])] = row
                 save_json_atomic(report_path, [rows_by_id[key] for key in sorted(rows_by_id)])
@@ -2478,7 +2571,15 @@ async def async_main(args: Optional[argparse.Namespace] = None) -> None:
         async def limited_generate(model_cfg: ModelConfig) -> None:
             async with model_sem:
                 await generate_one_model(model_cfg)
-        await asyncio.gather(*(limited_generate(config) for config in model_configs))
+        model_tasks = [asyncio.create_task(limited_generate(config)) for config in model_configs]
+        try:
+            await asyncio.gather(*model_tasks)
+        except FatalAPIError:
+            for task in model_tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*model_tasks, return_exceptions=True)
+            raise
 
     if args.action in {"score", "all"}:
         if not args.evaluator_model:
@@ -2517,15 +2618,19 @@ async def async_main(args: Optional[argparse.Namespace] = None) -> None:
                         "image_paths": sample.image_paths,
                         "image_files": sample.image_files,
                     })
-            rows = await score_report_rows(
-                tested_model=model_cfg.name,
-                rows=rows,
-                evaluator_config=evaluator_config,
-                client=judge_client,
-                concurrency=args.concurrency,
-                evaluator_max_tokens=args.evaluator_max_tokens,
-                prompt_path=args.judge_prompt,
-            )
+            try:
+                rows = await score_report_rows(
+                    tested_model=model_cfg.name,
+                    rows=rows,
+                    evaluator_config=evaluator_config,
+                    client=judge_client,
+                    concurrency=args.concurrency,
+                    evaluator_max_tokens=args.evaluator_max_tokens,
+                    prompt_path=args.judge_prompt,
+                )
+            except FatalAPIError:
+                save_json_atomic(report_path, build_simple_report_rows(rows))
+                raise
             save_json_atomic(report_path, build_simple_report_rows(rows))
             log(f"[{model_cfg.name}] scoring saved: {report_path}")
 
@@ -2554,7 +2659,11 @@ def main() -> None:
             save_text(summary_path, build_markdown_report(model_cfg.name, rows))
             log(f"已输出: {summary_path}")
         return
-    asyncio.run(async_main(args))
+    try:
+        asyncio.run(async_main(args))
+    except FatalAPIError as exc:
+        log(f"ERROR: {exc}")
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
